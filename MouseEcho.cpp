@@ -1,6 +1,3 @@
-// MouseEcho.cpp : Defines the entry point for the application.
-//
-
 #include "stdafx.h"
 #include "MouseEcho.h"
 
@@ -11,7 +8,13 @@ HINSTANCE hInst;                                // current instance
 HHOOK hMouseHook;
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
-NOTIFYICONDATA trayIconData = { 0 };
+NOTIFYICONDATA trayIconData = { sizeof(trayIconData) };
+HWND hMainWnd;
+
+#define MAX_THREADS 10
+
+POINT  vPoints[MAX_THREADS];
+HANDLE vThreads[MAX_THREADS];
 
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -19,16 +22,57 @@ BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 
+DWORD WINAPI ThreadFun(LPVOID lpParam)
+{
+  POINT* pt = (POINT*)lpParam;
+  HWND hWnd = CreateWindow(szWindowClass, szTitle, WS_VISIBLE, pt->x, pt->y, 10, 10, nullptr, nullptr, hInst, nullptr);
+  SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+  InvalidateRect(hWnd, NULL, TRUE);
+  UpdateWindow(hWnd);
+  //ShowWindow(hWnd, SW_SHOW);
+  Sleep(1000);
+  //AnimateWindow(hWnd, 1000, AW_ACTIVATE|AW_BLEND);
+  DestroyWindow(hWnd);
+  return 0;
+}
+
+int FreeHandles()
+{
+  int ret = -1;
+  for (int i = 0; i < MAX_THREADS; i++)
+  {
+    if (vThreads[i] != NULL)
+    {
+      if (WaitForSingleObject(vThreads[i], 0) == WAIT_OBJECT_0)
+      {
+        CloseHandle(vThreads[i]);
+        vThreads[i] = NULL;
+      }
+    }
+    if (vThreads[i] == NULL)
+      ret = i;
+  }
+  return ret;
+}
+
 static LRESULT CALLBACK MouseProc(_In_ int nCode, _In_ WPARAM wParam, _In_ LPARAM lParam)
 {
   if (nCode < 0)
+  {
     return CallNextHookEx(hMouseHook, nCode, wParam, lParam);
+  }
   if (nCode == HC_ACTION)
   {
     switch (wParam)
     {
     case WM_LBUTTONDOWN:
-      MessageBeep(MB_OK);
+      int i = FreeHandles();
+      if (i >= 0)
+      {
+        MOUSEHOOKSTRUCT* p = (MOUSEHOOKSTRUCT*)lParam;
+        vPoints[i] = p->pt;
+        vThreads[i] = CreateThread(NULL, 0, ThreadFun, &vPoints[i], 0, NULL);
+      }
       break;
     }
   }
@@ -66,6 +110,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     DispatchMessage(&msg);
   }
 
+  FreeHandles();
+
   return (int)msg.wParam;
 }
 
@@ -78,15 +124,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 //
 ATOM MyRegisterClass(HINSTANCE hInstance)
 {
-  WNDCLASSEXW wcex = {0};
-
-  wcex.cbSize = sizeof(WNDCLASSEX);
+  WNDCLASS wcex = { sizeof(WNDCLASS) };
 
   wcex.lpfnWndProc = WndProc;
   wcex.hInstance = hInstance;
   wcex.lpszClassName = szWindowClass;
-
-  return RegisterClassExW(&wcex);
+ 
+  return RegisterClass(&wcex);
 }
 
 //
@@ -103,12 +147,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
   hInst = hInstance; // Store instance handle in our global variable
 
-  HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-    CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
+  trayIconData.hWnd = CreateWindow(szWindowClass, szTitle, 0, 1, 0, 1, 0, nullptr, nullptr, hInstance, nullptr);
 
-  trayIconData.cbSize = sizeof(trayIconData);
-
-  trayIconData.hWnd = hWnd;
   trayIconData.uID = IDI_MOUSEECHO;
   trayIconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MOUSEECHO));
   trayIconData.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
@@ -127,24 +167,18 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     return FALSE;
   }
 
-  if (!hWnd)
+  if (!trayIconData.hWnd)
   {
     return FALSE;
   }
 
-<<<<<<< HEAD
-=======
   hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, NULL, 0);
 
   if (!hMouseHook)
   {
     return FALSE;
   }
-  
-  ShowWindow(hWnd, nCmdShow);
-  UpdateWindow(hWnd);
 
->>>>>>> origin/master
   // show balloonh
   lstrcpy(trayIconData.szInfoTitle, L"A");
   lstrcpy(trayIconData.szInfo, L"S");
@@ -173,7 +207,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     if (LOWORD(lParam) == WM_RBUTTONUP)
     {
       HMENU hMenu = LoadMenu(hInst, MAKEINTRESOURCE(IDC_MOUSEECHO));
-      POINT pos = {0};
+      POINT pos = { 0 };
       GetCursorPos(&pos);
       TrackPopupMenu(GetSubMenu(hMenu, 0), 0, pos.x, pos.y, 0, hWnd, NULL);
       DestroyMenu(hMenu);
@@ -191,7 +225,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
       DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
       break;
     case IDM_EXIT:
-      DestroyWindow(hWnd);
+      if (hWnd == trayIconData.hWnd)
+        DestroyWindow(hWnd);
       break;
     default:
       return DefWindowProc(hWnd, message, wParam, lParam);
@@ -202,15 +237,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
   {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(hWnd, &ps);
-    // TODO: Add any drawing code that uses hdc here...
+    RECT r;
+    GetClientRect(hWnd, &r);
+    HBRUSH hbr = CreateSolidBrush(RGB(244, 0, 0));
+    FillRect(hdc, &r, hbr);
+    DeleteObject(hbr);
     EndPaint(hWnd, &ps);
   }
   break;
   case WM_DESTROY:
-    trayIconData.uFlags = 0;
-    Shell_NotifyIcon(NIM_DELETE, &trayIconData);
-    UnhookWindowsHookEx(hMouseHook);
-    PostQuitMessage(0);
+    if (hWnd == trayIconData.hWnd)
+    {
+      trayIconData.uFlags = 0;
+      Shell_NotifyIcon(NIM_DELETE, &trayIconData);
+      UnhookWindowsHookEx(hMouseHook);
+      PostQuitMessage(0);
+    }
     break;
   default:
     return DefWindowProc(hWnd, message, wParam, lParam);
