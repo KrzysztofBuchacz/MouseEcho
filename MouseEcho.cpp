@@ -8,6 +8,7 @@
 
 // Global Variables:
 HINSTANCE hInst;                                // current instance
+HHOOK hMouseHook;
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
 NOTIFYICONDATA trayIconData = { 0 };
@@ -17,6 +18,23 @@ ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+
+static LRESULT CALLBACK MouseProc(_In_ int nCode, _In_ WPARAM wParam, _In_ LPARAM lParam)
+{
+  if (nCode < 0)
+    return CallNextHookEx(hMouseHook, nCode, wParam, lParam);
+  if (nCode == HC_ACTION)
+  {
+    switch (wParam)
+    {
+    case WM_LBUTTONDOWN:
+      MessageBeep(MB_OK);
+      break;
+    }
+  }
+  return 0;
+}
+
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
   _In_opt_ HINSTANCE hPrevInstance,
@@ -39,18 +57,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     return FALSE;
   }
 
-  HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_MOUSEECHO));
-
   MSG msg;
 
   // Main message loop:
   while (GetMessage(&msg, nullptr, 0, 0))
   {
-    if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
-    {
-      TranslateMessage(&msg);
-      DispatchMessage(&msg);
-    }
+    TranslateMessage(&msg);
+    DispatchMessage(&msg);
   }
 
   return (int)msg.wParam;
@@ -107,7 +120,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
   trayIconData.uID = IDI_MOUSEECHO;
   trayIconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MOUSEECHO));
   trayIconData.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
-  trayIconData.uCallbackMessage = ::RegisterWindowMessage(L"MouseEchoCallbackMessage1");
+  trayIconData.uCallbackMessage = RegisterWindowMessage(L"MouseEchoCallbackMessage1");
   lstrcpy(trayIconData.szTip, L"MouseEcho");
 
   // Set the tray icon
@@ -127,6 +140,13 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     return FALSE;
   }
 
+  hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, NULL, 0);
+
+  if (!hMouseHook)
+  {
+    return FALSE;
+  }
+  
   ShowWindow(hWnd, nCmdShow);
   UpdateWindow(hWnd);
 
@@ -157,11 +177,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
   {
     if (LOWORD(lParam) == WM_RBUTTONUP)
     {
-      HMENU hMenu = ::LoadMenu(hInst, MAKEINTRESOURCE(IDC_MOUSEECHO));
+      HMENU hMenu = LoadMenu(hInst, MAKEINTRESOURCE(IDC_MOUSEECHO));
       POINT pos = {0};
       GetCursorPos(&pos);
-      ::TrackPopupMenu(::GetSubMenu(hMenu, 0), 0, pos.x, pos.y, 0, hWnd, NULL);
-      ::DestroyMenu(hMenu);
+      TrackPopupMenu(GetSubMenu(hMenu, 0), 0, pos.x, pos.y, 0, hWnd, NULL);
+      DestroyMenu(hMenu);
     }
   }
   switch (message)
@@ -194,6 +214,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
   case WM_DESTROY:
     trayIconData.uFlags = 0;
     Shell_NotifyIcon(NIM_DELETE, &trayIconData);
+    UnhookWindowsHookEx(hMouseHook);
     PostQuitMessage(0);
     break;
   default:
