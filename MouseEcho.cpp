@@ -26,12 +26,10 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 DWORD WINAPI ThreadFun(LPVOID lpParam)
 {
   POINT* pt = (POINT*)lpParam;
-  HWND hWnd = CreateWindowEx(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW, szWindowClass, NULL, 0, pt->x - ICO_SIZE/2, pt->y - ICO_SIZE/2, ICO_SIZE, ICO_SIZE, nullptr, nullptr, nullptr, nullptr);
+  HWND hWnd = CreateWindowEx(WS_EX_LAYERED|WS_EX_TOPMOST, szWindowClass, NULL, 0, pt->x - ICO_SIZE/2, pt->y - ICO_SIZE/2, ICO_SIZE, ICO_SIZE, nullptr, nullptr, nullptr, nullptr);
   SetWindowLong(hWnd, GWL_STYLE, 0);
   SetLayeredWindowAttributes(hWnd, COLOR_TRANSPARENT_BKG, 0, LWA_COLORKEY);
-  ShowWindow(hWnd, SW_SHOW);
-  InvalidateRect(hWnd, NULL, TRUE);
-  UpdateWindow(hWnd);
+  SetWindowPos(hWnd, NULL, 0, 0, 0, 0, SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_SHOWWINDOW);
   SetTimer(hWnd, TIMER_EVENT, 150, NULL);
   MSG msg;
   while (GetMessage(&msg, hWnd, 0, 0))
@@ -225,6 +223,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
       BOOL ok = KillTimer(hWnd, TIMER_EVENT);
       _ASSERT(ok);
+      DestroyWindow(hWnd);
       PostQuitMessage(0);
     }
     break;
