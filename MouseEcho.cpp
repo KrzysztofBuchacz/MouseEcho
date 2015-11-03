@@ -11,13 +11,14 @@ WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
 NOTIFYICONDATA trayIconData = { sizeof(trayIconData) };
 HWND hMainWnd;
 
+#define TIMER_EVENT 1
+
 #define MAX_THREADS 10
 
 POINT  vPoints[MAX_THREADS];
 HANDLE vThreads[MAX_THREADS];
 
 // Forward declarations of functions included in this code module:
-ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
@@ -25,14 +26,15 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 DWORD WINAPI ThreadFun(LPVOID lpParam)
 {
   POINT* pt = (POINT*)lpParam;
-  HWND hWnd = CreateWindow(szWindowClass, szTitle, WS_VISIBLE, pt->x, pt->y, 10, 10, nullptr, nullptr, hInst, nullptr);
-  SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-  InvalidateRect(hWnd, NULL, TRUE);
-  UpdateWindow(hWnd);
-  //ShowWindow(hWnd, SW_SHOW);
-  Sleep(1000);
-  //AnimateWindow(hWnd, 1000, AW_ACTIVATE|AW_BLEND);
-  DestroyWindow(hWnd);
+  HWND hWnd = CreateWindowEx(WS_EX_TOPMOST|WS_EX_TOOLWINDOW|WS_EX_TRANSPARENT, szWindowClass, NULL, 0, pt->x, pt->y, 100, 100, nullptr, nullptr, nullptr, nullptr);
+  SetWindowLong(hWnd, GWL_STYLE, WS_VISIBLE);
+  SetTimer(hWnd, TIMER_EVENT, 1000, NULL);
+  MSG msg;
+  while (GetMessage(&msg, hWnd, 0, 0))
+  {
+    TranslateMessage(&msg);
+    DispatchMessage(&msg);
+  }
   return 0;
 }
 
@@ -93,7 +95,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
   // Initialize global strings
   LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
   LoadStringW(hInstance, IDC_MOUSEECHO, szWindowClass, MAX_LOADSTRING);
-  MyRegisterClass(hInstance);
+
+  WNDCLASSEX wcex = { sizeof(WNDCLASSEX) };
+
+  wcex.lpfnWndProc = WndProc;
+  wcex.hInstance = hInstance;
+  wcex.lpszClassName = szWindowClass;
+  wcex.hbrBackground = (HBRUSH)NULL_BRUSH;
+
+  RegisterClassEx(&wcex);
 
   // Perform application initialization:
   if (!InitInstance(hInstance, nCmdShow))
@@ -102,8 +112,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
   }
 
   MSG msg;
-
-  // Main message loop:
   while (GetMessage(&msg, nullptr, 0, 0))
   {
     TranslateMessage(&msg);
@@ -116,22 +124,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 }
 
 
-
-//
-//  FUNCTION: MyRegisterClass()
-//
-//  PURPOSE: Registers the window class.
-//
-ATOM MyRegisterClass(HINSTANCE hInstance)
-{
-  WNDCLASS wcex = { sizeof(WNDCLASS) };
-
-  wcex.lpfnWndProc = WndProc;
-  wcex.hInstance = hInstance;
-  wcex.lpszClassName = szWindowClass;
- 
-  return RegisterClass(&wcex);
-}
 
 //
 //   FUNCTION: InitInstance(HINSTANCE, int)
@@ -147,7 +139,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
   hInst = hInstance; // Store instance handle in our global variable
 
-  trayIconData.hWnd = CreateWindow(szWindowClass, szTitle, 0, 1, 0, 1, 0, nullptr, nullptr, hInstance, nullptr);
+  trayIconData.hWnd = CreateWindow(szWindowClass, szTitle, 0, 100, 100, 100, 100, nullptr, nullptr, hInstance, nullptr);
 
   trayIconData.uID = IDI_MOUSEECHO;
   trayIconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MOUSEECHO));
@@ -212,6 +204,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
       TrackPopupMenu(GetSubMenu(hMenu, 0), 0, pos.x, pos.y, 0, hWnd, NULL);
       DestroyMenu(hMenu);
     }
+    return 0;
   }
   switch (message)
   {
@@ -233,6 +226,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     }
   }
   break;
+  case WM_TIMER:
+    if (wParam == TIMER_EVENT)
+    {
+      KillTimer(hWnd, TIMER_EVENT);
+      PostQuitMessage(0);
+    }
+    break;
+  case WM_ERASEBKGND:
+    return TRUE;
   case WM_PAINT:
   {
     PAINTSTRUCT ps;
@@ -240,7 +242,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     RECT r;
     GetClientRect(hWnd, &r);
     HBRUSH hbr = CreateSolidBrush(RGB(244, 0, 0));
-    FillRect(hdc, &r, hbr);
+    FrameRect(hdc, &r, hbr);
     DeleteObject(hbr);
     EndPaint(hWnd, &ps);
   }
