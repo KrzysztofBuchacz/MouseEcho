@@ -9,10 +9,10 @@ HHOOK hMouseHook;
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
 NOTIFYICONDATA trayIconData = { sizeof(trayIconData) };
-HWND hMainWnd;
+#define COLOR_TRANSPARENT_BKG RGB(128,128,128)
 
 #define TIMER_EVENT 1
-
+#define ICO_SIZE 32
 #define MAX_THREADS 10
 
 POINT  vPoints[MAX_THREADS];
@@ -26,9 +26,13 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 DWORD WINAPI ThreadFun(LPVOID lpParam)
 {
   POINT* pt = (POINT*)lpParam;
-  HWND hWnd = CreateWindowEx(WS_EX_TOPMOST|WS_EX_TOOLWINDOW|WS_EX_TRANSPARENT, szWindowClass, NULL, 0, pt->x, pt->y, 100, 100, nullptr, nullptr, nullptr, nullptr);
-  SetWindowLong(hWnd, GWL_STYLE, WS_VISIBLE);
-  SetTimer(hWnd, TIMER_EVENT, 1000, NULL);
+  HWND hWnd = CreateWindowEx(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW, szWindowClass, NULL, 0, pt->x - ICO_SIZE/2, pt->y - ICO_SIZE/2, ICO_SIZE, ICO_SIZE, nullptr, nullptr, nullptr, nullptr);
+  SetWindowLong(hWnd, GWL_STYLE, 0);
+  SetLayeredWindowAttributes(hWnd, COLOR_TRANSPARENT_BKG, 0, LWA_COLORKEY);
+  ShowWindow(hWnd, SW_SHOW);
+  InvalidateRect(hWnd, NULL, TRUE);
+  UpdateWindow(hWnd);
+  SetTimer(hWnd, TIMER_EVENT, 150, NULL);
   MSG msg;
   while (GetMessage(&msg, hWnd, 0, 0))
   {
@@ -182,16 +186,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
   return TRUE;
 }
 
-//
-//  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
-//
-//  PURPOSE:  Processes messages for the main window.
-//
-//  WM_COMMAND  - process the application menu
-//  WM_PAINT    - Paint the main window
-//  WM_DESTROY  - post a quit message and return
-//
-//
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
   if (trayIconData.uCallbackMessage == message)
@@ -229,8 +223,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
   case WM_TIMER:
     if (wParam == TIMER_EVENT)
     {
-      KillTimer(hWnd, TIMER_EVENT);
+      BOOL ok = KillTimer(hWnd, TIMER_EVENT);
+      _ASSERT(ok);
       PostQuitMessage(0);
+    }
+    break;
+  case WM_NCCALCSIZE:
+    if (wParam)
+    {
+      LPNCCALCSIZE_PARAMS pNcCalcSizeParam = (LPNCCALCSIZE_PARAMS)lParam;
+      pNcCalcSizeParam->rgrc[0] = pNcCalcSizeParam->rgrc[1];
+      return TRUE;
     }
     break;
   case WM_ERASEBKGND:
@@ -241,8 +244,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     HDC hdc = BeginPaint(hWnd, &ps);
     RECT r;
     GetClientRect(hWnd, &r);
-    HBRUSH hbr = CreateSolidBrush(RGB(244, 0, 0));
-    FrameRect(hdc, &r, hbr);
+    HBRUSH hbr = CreateSolidBrush(COLOR_TRANSPARENT_BKG);
+    FillRect(hdc, &r, hbr);
+    DrawIconEx(hdc, 0, 0, trayIconData.hIcon, ICO_SIZE, ICO_SIZE, 0, NULL, DI_NORMAL);
     DeleteObject(hbr);
     EndPaint(hWnd, &ps);
   }
