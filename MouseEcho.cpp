@@ -1,46 +1,42 @@
 #include "stdafx.h"
 #include "MouseEcho.h"
 
-#define MAX_LOADSTRING 100
-
-// Global Variables:
-HINSTANCE hInst;                                // current instance
+HINSTANCE hInst;
 HHOOK hMouseHook;
-WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
-WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
+WCHAR szWindowClass[] = L"2C91E8BF-43EF-4604-9056-5991FAB6FB2E";
 NOTIFYICONDATA trayIconData = { sizeof(trayIconData) };
-#define COLOR_TRANSPARENT_BKG RGB(128,128,128)
-
+#define COLOR_TRANSPARENT_BKG RGB(128, 128, 128)
 #define TIMER_EVENT 1
 #define ICO_SIZE 32
 #define MAX_THREADS 10
 
-POINT  vPoints[MAX_THREADS];
+POINT  vPoints [MAX_THREADS];
 HANDLE vThreads[MAX_THREADS];
 
 // Forward declarations of functions included in this code module:
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 
 DWORD WINAPI ThreadFun(LPVOID lpParam)
 {
   POINT* pt = (POINT*)lpParam;
-  HWND hWnd = CreateWindowEx(WS_EX_LAYERED|WS_EX_TOPMOST, szWindowClass, NULL, 0, pt->x - ICO_SIZE/2, pt->y - ICO_SIZE/2, ICO_SIZE, ICO_SIZE, nullptr, nullptr, nullptr, nullptr);
-  SetWindowLong(hWnd, GWL_STYLE, 0);
+  HWND hWnd = CreateWindowEx(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT, szWindowClass, NULL, 0, pt->x - ICO_SIZE/2, pt->y - ICO_SIZE/2, ICO_SIZE, ICO_SIZE, nullptr, nullptr, nullptr, nullptr);
+  SetWindowLong(hWnd, GWL_STYLE, WS_DISABLED);
   SetLayeredWindowAttributes(hWnd, COLOR_TRANSPARENT_BKG, 0, LWA_COLORKEY);
-  SetWindowPos(hWnd, NULL, 0, 0, 0, 0, SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_SHOWWINDOW);
+  SetWindowPos(hWnd, NULL, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
   SetTimer(hWnd, TIMER_EVENT, 150, NULL);
   MSG msg;
-  while (GetMessage(&msg, hWnd, 0, 0))
+  while (GetMessage(&msg, NULL, 0, 0))
   {
     TranslateMessage(&msg);
     DispatchMessage(&msg);
   }
+  BOOL ok = DestroyWindow(hWnd);
+  _ASSERT(ok);
   return 0;
 }
 
-int FreeHandles()
+int FreeHandle()
 {
   int ret = -1;
   for (int i = 0; i < MAX_THREADS; i++)
@@ -61,16 +57,12 @@ int FreeHandles()
 
 static LRESULT CALLBACK MouseProc(_In_ int nCode, _In_ WPARAM wParam, _In_ LPARAM lParam)
 {
-  if (nCode < 0)
-  {
-    return CallNextHookEx(hMouseHook, nCode, wParam, lParam);
-  }
   if (nCode == HC_ACTION)
   {
     switch (wParam)
     {
     case WM_LBUTTONDOWN:
-      int i = FreeHandles();
+      int i = FreeHandle();
       if (i >= 0)
       {
         MOUSEHOOKSTRUCT* p = (MOUSEHOOKSTRUCT*)lParam;
@@ -80,7 +72,7 @@ static LRESULT CALLBACK MouseProc(_In_ int nCode, _In_ WPARAM wParam, _In_ LPARA
       break;
     }
   }
-  return 0;
+  return CallNextHookEx(hMouseHook, nCode, wParam, lParam);
 }
 
 
@@ -91,12 +83,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 {
   UNREFERENCED_PARAMETER(hPrevInstance);
   UNREFERENCED_PARAMETER(lpCmdLine);
-
-  // TODO: Place code here.
-
-  // Initialize global strings
-  LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
-  LoadStringW(hInstance, IDC_MOUSEECHO, szWindowClass, MAX_LOADSTRING);
 
   WNDCLASSEX wcex = { sizeof(WNDCLASSEX) };
 
@@ -120,7 +106,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     DispatchMessage(&msg);
   }
 
-  FreeHandles();
+  FreeHandle();
 
   return (int)msg.wParam;
 }
@@ -141,7 +127,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
   hInst = hInstance; // Store instance handle in our global variable
 
-  trayIconData.hWnd = CreateWindow(szWindowClass, szTitle, 0, 100, 100, 100, 100, nullptr, nullptr, hInstance, nullptr);
+  trayIconData.hWnd = CreateWindow(szWindowClass, NULL, 0, 0, 0, CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr, hInstance, nullptr);
 
   trayIconData.uID = IDI_MOUSEECHO;
   trayIconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MOUSEECHO));
@@ -173,14 +159,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
     return FALSE;
   }
 
-  // show balloonh
-  lstrcpy(trayIconData.szInfoTitle, L"A");
-  lstrcpy(trayIconData.szInfo, L"S");
-  trayIconData.uTimeout = 15000;
-  trayIconData.uFlags = NIF_INFO;
-  trayIconData.dwInfoFlags = NIF_INFO;
-  Shell_NotifyIcon(NIM_MODIFY, &trayIconData);
-
   return TRUE;
 }
 
@@ -206,9 +184,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     // Parse the menu selections:
     switch (wmId)
     {
-    case IDM_ABOUT:
-      DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-      break;
     case IDM_EXIT:
       if (hWnd == trayIconData.hWnd)
         DestroyWindow(hWnd);
@@ -223,7 +198,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
       BOOL ok = KillTimer(hWnd, TIMER_EVENT);
       _ASSERT(ok);
-      DestroyWindow(hWnd);
       PostQuitMessage(0);
     }
     break;
@@ -250,6 +224,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     EndPaint(hWnd, &ps);
   }
   break;
+  case WM_ACTIVATEAPP:
+    if (hWnd != trayIconData.hWnd)
+    {
+      return MA_NOACTIVATEANDEAT;
+    }
+    break;
   case WM_DESTROY:
     if (hWnd == trayIconData.hWnd)
     {
