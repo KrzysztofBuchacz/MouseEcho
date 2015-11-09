@@ -45,5 +45,11 @@
     <Image Include="MouseEcho.ico">
       <Filter>Resource Files</Filter>
     </Image>
+    <Image Include="Tray.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" />
   </ItemGroup>
 </Project>

@@ -2,6 +2,7 @@
 #include "MouseEcho.h"
 
 HINSTANCE hInst;
+HICON hIcon;
 HHOOK hMouseHook;
 WCHAR szWindowClass[] = L"2C91E8BF-43EF-4604-9056-5991FAB6FB2E";
 NOTIFYICONDATA trayIconData = { sizeof(trayIconData) };
@@ -13,14 +14,11 @@ NOTIFYICONDATA trayIconData = { sizeof(trayIconData) };
 POINT  vPoints [MAX_THREADS];
 HANDLE vThreads[MAX_THREADS];
 
-// Forward declarations of functions included in this code module:
-BOOL                InitInstance(HINSTANCE, int);
-LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
-
 DWORD WINAPI ThreadFun(LPVOID lpParam)
 {
   POINT* pt = (POINT*)lpParam;
-  HWND hWnd = CreateWindowEx(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT, szWindowClass, NULL, 0, pt->x - ICO_SIZE/2, pt->y - ICO_SIZE/2, ICO_SIZE, ICO_SIZE, nullptr, nullptr, nullptr, nullptr);
+  HWND hWnd = CreateWindowEx(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT, szWindowClass,
+    NULL, 0, pt->x - ICO_SIZE/2, pt->y - ICO_SIZE/2, ICO_SIZE, ICO_SIZE, nullptr, nullptr, nullptr, nullptr);
   SetWindowLong(hWnd, GWL_STYLE, WS_DISABLED);
   SetLayeredWindowAttributes(hWnd, COLOR_TRANSPARENT_BKG, 0, LWA_COLORKEY);
   SetWindowPos(hWnd, NULL, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
@@ -62,6 +60,7 @@ static LRESULT CALLBACK MouseProc(_In_ int nCode, _In_ WPARAM wParam, _In_ LPARA
     switch (wParam)
     {
     case WM_LBUTTONDOWN:
+    case WM_RBUTTONDOWN:
       int i = FreeHandle();
       if (i >= 0)
       {
@@ -75,62 +74,16 @@ static LRESULT CALLBACK MouseProc(_In_ int nCode, _In_ WPARAM wParam, _In_ LPARA
   return CallNextHookEx(hMouseHook, nCode, wParam, lParam);
 }
 
-
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-  _In_opt_ HINSTANCE hPrevInstance,
-  _In_ LPWSTR    lpCmdLine,
-  _In_ int       nCmdShow)
-{
-  UNREFERENCED_PARAMETER(hPrevInstance);
-  UNREFERENCED_PARAMETER(lpCmdLine);
-
-  WNDCLASSEX wcex = { sizeof(WNDCLASSEX) };
-
-  wcex.lpfnWndProc = WndProc;
-  wcex.hInstance = hInstance;
-  wcex.lpszClassName = szWindowClass;
-  wcex.hbrBackground = (HBRUSH)NULL_BRUSH;
-
-  RegisterClassEx(&wcex);
-
-  // Perform application initialization:
-  if (!InitInstance(hInstance, nCmdShow))
-  {
-    return FALSE;
-  }
-
-  MSG msg;
-  while (GetMessage(&msg, nullptr, 0, 0))
-  {
-    TranslateMessage(&msg);
-    DispatchMessage(&msg);
-  }
-
-  FreeHandle();
-
-  return (int)msg.wParam;
-}
-
-
-
-//
-//   FUNCTION: InitInstance(HINSTANCE, int)
-//
-//   PURPOSE: Saves instance handle and creates main window
-//
-//   COMMENTS:
-//
-//        In this function, we save the instance handle in a global variable and
-//        create and display the main program window.
-//
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
   hInst = hInstance; // Store instance handle in our global variable
 
+  hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MOUSEECHO));
+
   trayIconData.hWnd = CreateWindow(szWindowClass, NULL, 0, 0, 0, CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr, hInstance, nullptr);
 
   trayIconData.uID = IDI_MOUSEECHO;
-  trayIconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MOUSEECHO));
+  trayIconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_TRAY));
   trayIconData.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
   trayIconData.uCallbackMessage = RegisterWindowMessage(L"MouseEchoCallbackMessage1");
   lstrcpy(trayIconData.szTip, L"MouseEcho");
@@ -181,7 +134,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
   case WM_COMMAND:
   {
     int wmId = LOWORD(wParam);
-    // Parse the menu selections:
     switch (wmId)
     {
     case IDM_EXIT:
@@ -219,7 +171,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     GetClientRect(hWnd, &r);
     HBRUSH hbr = CreateSolidBrush(COLOR_TRANSPARENT_BKG);
     FillRect(hdc, &r, hbr);
-    DrawIconEx(hdc, 0, 0, trayIconData.hIcon, ICO_SIZE, ICO_SIZE, 0, NULL, DI_NORMAL);
+    DrawIconEx(hdc, 0, 0, hIcon, ICO_SIZE, ICO_SIZE, 0, NULL, DI_NORMAL);
     DeleteObject(hbr);
     EndPaint(hWnd, &ps);
   }
@@ -245,22 +197,33 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
   return 0;
 }
 
-// Message handler for about box.
-INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow)
 {
-  UNREFERENCED_PARAMETER(lParam);
-  switch (message)
-  {
-  case WM_INITDIALOG:
-    return (INT_PTR)TRUE;
+  UNREFERENCED_PARAMETER(hPrevInstance);
+  UNREFERENCED_PARAMETER(lpCmdLine);
 
-  case WM_COMMAND:
-    if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
-    {
-      EndDialog(hDlg, LOWORD(wParam));
-      return (INT_PTR)TRUE;
-    }
-    break;
+  WNDCLASSEX wcex = { sizeof(WNDCLASSEX) };
+
+  wcex.lpfnWndProc = WndProc;
+  wcex.hInstance = hInstance;
+  wcex.lpszClassName = szWindowClass;
+  wcex.hbrBackground = (HBRUSH)NULL_BRUSH;
+
+  RegisterClassEx(&wcex);
+
+  if (!InitInstance(hInstance, nCmdShow))
+  {
+    return FALSE;
   }
-  return (INT_PTR)FALSE;
+
+  MSG msg;
+  while (GetMessage(&msg, nullptr, 0, 0))
+  {
+    TranslateMessage(&msg);
+    DispatchMessage(&msg);
+  }
+
+  FreeHandle();
+
+  return (int)msg.wParam;
 }
