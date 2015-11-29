@@ -4,6 +4,7 @@
 HINSTANCE hInst;
 HICON hIcon;
 HHOOK hMouseHook;
+HINSTANCE hUser32;
 WCHAR szWindowClass[] = L"2C91E8BF-43EF-4604-9056-5991FAB6FB2E";
 NOTIFYICONDATA trayIconData = { sizeof(trayIconData) };
 #define COLOR_TRANSPARENT_BKG RGB(128, 128, 128)
@@ -14,11 +15,32 @@ NOTIFYICONDATA trayIconData = { sizeof(trayIconData) };
 POINT  vPoints [MAX_THREADS];
 HANDLE vThreads[MAX_THREADS];
 
+#ifndef WS_EX_LAYERED
+#define WS_EX_LAYERED 0x00080000
+#endif
+
+#ifndef LWA_COLORKEY
+#define LWA_COLORKEY            0x00000001
+#endif
+
+typedef BOOL (WINAPI * SETLAYEREDWINDOWATTRIBUTES)(HWND, COLORREF, BYTE, DWORD);
+SETLAYEREDWINDOWATTRIBUTES pfn = NULL;
+
+BOOL
+SetLayeredWindowAttributes(
+    HWND hwnd,
+    COLORREF crKey,
+    BYTE bAlpha,
+    DWORD dwFlags)
+{
+  return (*pfn)(hwnd, crKey, bAlpha, dwFlags);
+}
+
 DWORD WINAPI ThreadFun(LPVOID lpParam)
 {
   POINT* pt = (POINT*)lpParam;
   HWND hWnd = CreateWindowEx(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT, szWindowClass,
-    NULL, 0, pt->x - ICO_SIZE/2, pt->y - ICO_SIZE/2, ICO_SIZE, ICO_SIZE, nullptr, nullptr, nullptr, nullptr);
+    NULL, 0, pt->x - ICO_SIZE/2, pt->y - ICO_SIZE/2, ICO_SIZE, ICO_SIZE, NULL, NULL, NULL, NULL);
   SetWindowLong(hWnd, GWL_STYLE, WS_DISABLED);
   SetLayeredWindowAttributes(hWnd, COLOR_TRANSPARENT_BKG, 0, LWA_COLORKEY);
   SetWindowPos(hWnd, NULL, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
@@ -29,6 +51,7 @@ DWORD WINAPI ThreadFun(LPVOID lpParam)
     TranslateMessage(&msg);
     DispatchMessage(&msg);
   }
+  //AnimateWindow(hWnd, 5000, AW_HIDE|AW_BLEND);
   BOOL ok = DestroyWindow(hWnd);
   _ASSERT(ok);
   return 0;
@@ -53,7 +76,7 @@ int FreeHandle()
   return ret;
 }
 
-static LRESULT CALLBACK MouseProc(_In_ int nCode, _In_ WPARAM wParam, _In_ LPARAM lParam)
+static LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
   if (nCode == HC_ACTION)
   {
@@ -74,13 +97,33 @@ static LRESULT CALLBACK MouseProc(_In_ int nCode, _In_ WPARAM wParam, _In_ LPARA
   return CallNextHookEx(hMouseHook, nCode, wParam, lParam);
 }
 
+void ReportLastError()
+{
+  DWORD error = GetLastError();
+  LPVOID lpMsgBuf;
+  FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS,
+    NULL, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // Default language
+    (LPTSTR) &lpMsgBuf, 0, NULL);
+  MessageBox(NULL, (LPCTSTR)lpMsgBuf, L"MouseEcho Error", MB_OK);
+  LocalFree(lpMsgBuf);
+}
+
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
   hInst = hInstance; // Store instance handle in our global variable
 
   hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MOUSEECHO));
 
-  trayIconData.hWnd = CreateWindow(szWindowClass, NULL, 0, 0, 0, CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr, hInstance, nullptr);
+  hUser32 = LoadLibrary(L"User32.dll");
+  pfn = (SETLAYEREDWINDOWATTRIBUTES)GetProcAddress(hUser32, "SetLayeredWindowAttributes");
+
+  trayIconData.hWnd = CreateWindow(szWindowClass, NULL, 0, 0, 0, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInstance, NULL);
+
+  if (!trayIconData.hWnd)
+  {
+    ReportLastError();
+    return FALSE;
+  }
 
   trayIconData.uID = IDI_MOUSEECHO;
   trayIconData.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_TRAY));
@@ -88,27 +131,17 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
   trayIconData.uCallbackMessage = RegisterWindowMessage(L"MouseEchoCallbackMessage1");
   lstrcpy(trayIconData.szTip, L"MouseEcho");
 
-  // Set the tray icon
   if (!Shell_NotifyIcon(NIM_ADD, &trayIconData))
   {
+    ReportLastError();
     return FALSE;
   }
 
-  trayIconData.uVersion = 3;
-  if (!Shell_NotifyIcon(NIM_SETVERSION, &trayIconData))
-  {
-    return FALSE;
-  }
-
-  if (!trayIconData.hWnd)
-  {
-    return FALSE;
-  }
-
-  hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, NULL, 0);
+  hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, hInstance, 0);
 
   if (!hMouseHook)
   {
+    ReportLastError();
     return FALSE;
   }
 
@@ -217,12 +250,13 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmd
   }
 
   MSG msg;
-  while (GetMessage(&msg, nullptr, 0, 0))
+  while (GetMessage(&msg, NULL, 0, 0))
   {
     TranslateMessage(&msg);
     DispatchMessage(&msg);
   }
 
+  FreeLibrary(hUser32);
   FreeHandle();
 
   return (int)msg.wParam;

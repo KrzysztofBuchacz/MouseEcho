@@ -43,6 +43,9 @@ dlldata.c
 *.obj
 *.pch
 *.pdb
+*.res
+*.idb
+*.bsc
 *.pgc
 *.pgd
 *.rsp
@@ -229,3 +232,6 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+MouseEcho.plg
+MouseEcho.opt
+ReleaseVC6/MouseEcho.exe
